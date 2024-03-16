@@ -19,28 +19,13 @@ interface ast_interface #(
 
   endtask
 
-  generate
-    if (TX_DIR != 1)
-      begin
-        logic [DATA_W - 1:0]    ast_data          [TX_DIR - 1:0];
-        logic                   ast_startofpacket [TX_DIR - 1:0];
-        logic                   ast_endofpacket   [TX_DIR - 1:0];
-        logic                   ast_valid         [TX_DIR - 1:0];
-        logic [EMPTY_W - 1:0]   ast_empty         [TX_DIR - 1:0];
-        logic [CHANNEL_W - 1:0] ast_channel       [TX_DIR - 1:0];
-        logic                   ast_ready         [TX_DIR - 1:0]; 
-      end
-    else
-      begin
-        logic [DIR_SEL_WIDTH - 1:0] dir;
-        logic [DATA_W - 1:0]        ast_data;
-        logic                       ast_startofpacket;
-        logic                       ast_endofpacket;
-        logic                       ast_valid;
-        logic [EMPTY_W - 1:0]       ast_empty;
-        logic [CHANNEL_W - 1:0]     ast_channel;
-        logic                       ast_ready;   
-      end
-  endgenerate
+  logic [DIR_SEL_WIDTH - 1:0] dir;
+  logic [DATA_WIDTH - 1:0]    ast_data;
+  logic                       ast_startofpacket;
+  logic                       ast_endofpacket;
+  logic                       ast_valid;
+  logic [EMPTY_WIDTH - 1:0]   ast_empty;
+  logic [CHANNEL_WIDTH - 1:0] ast_channel;
+  logic                       ast_ready;   
 
 endinterface

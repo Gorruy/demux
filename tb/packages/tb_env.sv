@@ -7,7 +7,7 @@ package tb_env;
   // a form of queues, where each element in queue represents values of 
   // dut signal during transaction
 
-    in_data_t     data;
+    data_t        data;
     int           len;
     channel_t     channel[$];
     empty_in_t    empty[$];
@@ -67,7 +67,7 @@ package tb_env;
       // Transactions of length one
       repeat ( NUMBER_OF_ONE_LENGHT_RUNS )
         begin
-          tr = new( .tr_length(1)) ;
+          tr = new( .tr_length(1) );
           generated_transactions.put(tr);
         end
 
@@ -98,7 +98,7 @@ package tb_env;
 
 
       // Transactions of work length with empty's values progression
-      for ( int i = 0; i < 2**EMPTY_IN_W; i++ )
+      for ( int i = 0; i < 2**EMPTY_WIDTH; i++ )
         begin
           tr = new();
 
@@ -200,8 +200,8 @@ package tb_env;
             begin
               tr.ready[i]       = $urandom_range( 1, 0 );
               tr.valid[i]       = $urandom_range( 1, 0 );
-              tr.empty[i]       = $urandom_range( 2**EMPTY_IN_W, 0 );
-              tr.channel[i]     = $urandom_range( 2**CHANNEL_W, 0 );
+              tr.empty[i]       = $urandom_range( 2**EMPTY_WIDTH, 0 );
+              tr.channel[i]     = $urandom_range( 2**CHANNEL_WIDTH, 0 );
               tr.endofpacket[i] = $urandom_range( 1, 0 );
             end
 
@@ -216,15 +216,15 @@ package tb_env;
     
   endclass
 
-  class Driver #( DATA_W = 1, EMPTY_W = 1 );
+  class Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR );
   // This class will drive all dut input signals
   // according to transaction's parameters
 
     virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) vif;
 
-    function new( input virtual ast_interface #( DATA_W, EMPTY_W, CHANNEL_W ) dut_interface );
+    function new( input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) dutif );
 
-      vif = dut_interface;
+      vif = dutif;
 
     endfunction
 
@@ -296,17 +296,17 @@ package tb_env;
   
   endclass
   
-  class Monitor #( DATA_W = 1, EMPTY_W = 1 );
+  class Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR );
   // This class will gather both input and output data from dut
   // and send it to Scoreboard
 
-     virtual ast_interface #( DATA_W, EMPTY_W, CHANNEL_W ) vif;
+     virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) vif;
      mailbox #( byte_data_t )                              input_data;
-     mailbox #( logic [CHANNEL_W - 1:0] )                  channel_mbx;
+     mailbox #( logic [CHANNEL_WIDTH - 1:0] )              channel_mbx;
 
-    function new ( input virtual ast_interface #( DATA_W, EMPTY_W, CHANNEL_W ) dut_interface,
+    function new ( input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) dut_interface,
                    mailbox #( byte_data_t )                                    mbx_data,
-                   mailbox #( logic [CHANNEL_W - 1:0] )                        in_ch
+                   mailbox #( logic [CHANNEL_WIDTH - 1:0] )                        in_ch
                  );
 
       vif         = dut_interface;
@@ -323,10 +323,10 @@ package tb_env;
 
     task get_data;
 
-      byte_data_t             data;
-      int                     start_of_packet_flag;
-      int                     timeout_ctr;
-      logic [CHANNEL_W - 1:0] channel;
+      byte_data_t                 data;
+      int                         start_of_packet_flag;
+      int                         timeout_ctr;
+      logic [CHANNEL_WIDTH - 1:0] channel;
 
       start_of_packet_flag = 0;
       data                 = {}; 
@@ -357,7 +357,7 @@ package tb_env;
                 begin
                   timeout_ctr = 0;
 
-                  for ( int i = 0; i < 2**EMPTY_W - vif.ast_empty; i++ )
+                  for ( int i = 0; i < 2**EMPTY_WIDTH - vif.ast_empty; i++ )
                     begin
                       data.push_back( vif.ast_data[i*8 +: 8] );
                     end
@@ -369,7 +369,7 @@ package tb_env;
                 begin
                   timeout_ctr = 0;
 
-                  for ( int i = 0; i < 2**EMPTY_W; i++ )
+                  for ( int i = 0; i < 2**EMPTY_WIDTH; i++ )
                     begin
                       data.push_back( vif.ast_data[i*8 +: 8] );
                     end
@@ -387,15 +387,15 @@ package tb_env;
   class Scoreboard;
   // This class will compare read and written data
 
-    mailbox #( byte_data_t )             input_data;
-    mailbox #( byte_data_t )             output_data;
-    mailbox #( logic [CHANNEL_W - 1:0] ) input_channel;
-    mailbox #( logic [CHANNEL_W - 1:0] ) output_channel;
+    mailbox #( byte_data_t )                 input_data;
+    mailbox #( byte_data_t )                 output_data;
+    mailbox #( logic [CHANNEL_WIDTH - 1:0] ) input_channel;
+    mailbox #( logic [CHANNEL_WIDTH - 1:0] ) output_channel;
 
-    function new ( mailbox #( byte_data_t )             in_data,
-                   mailbox #( byte_data_t )             out_data,
-                   mailbox #( logic [CHANNEL_W - 1:0] ) in_ch,
-                   mailbox #( logic [CHANNEL_W - 1:0] ) out_ch
+    function new ( mailbox #( byte_data_t )                 in_data,
+                   mailbox #( byte_data_t )                 out_data,
+                   mailbox #( logic [CHANNEL_WIDTH - 1:0] ) in_ch,
+                   mailbox #( logic [CHANNEL_WIDTH - 1:0] ) out_ch
                  );
 
       input_data     = in_data;
@@ -407,10 +407,10 @@ package tb_env;
 
     task run;
 
-      byte_data_t             in_data;
-      byte_data_t             out_data;
-      logic [CHANNEL_W - 1:0] in_channel;
-      logic [CHANNEL_W - 1:0] out_channel;
+      byte_data_t                 in_data;
+      byte_data_t                 out_data;
+      logic [CHANNEL_WIDTH - 1:0] in_channel;
+      logic [CHANNEL_WIDTH - 1:0] out_channel;
 
       if ( input_channel.num() != output_channel.num() )
         $error("Error in read channels amount:rd%d, wr%d", output_channel.num(), input_channel.num() );
@@ -471,25 +471,25 @@ package tb_env;
   class Environment;
   // This class will hold all tb elements together
     
-    Driver #( DATA_IN_W, EMPTY_IN_W )                             in_driver;
-    Driver #( DATA_OUT_W, EMPTY_OUT_W )                           out_driver;
-    Monitor #( DATA_IN_W, EMPTY_IN_W )                            in_monitor;
-    Monitor #( DATA_OUT_W, EMPTY_OUT_W )                          out_monitor;
-    Scoreboard                                                    scoreboard;
-    Generator                                                     generator;
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  in_driver;
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  out_driver;
+    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) in_monitor;
+    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) out_monitor;
+    Scoreboard                                                                 scoreboard;
+    Generator                                                                  generator;
 
-    mailbox #( Transaction )                                      generated_transactions;
-    mailbox #( byte_data_t )                                      input_data;
-    mailbox #( byte_data_t )                                      output_data;
+    mailbox #( Transaction )                                                   generated_transactions;
+    mailbox #( byte_data_t )                                                   input_data;
+    mailbox #( byte_data_t )                                                   output_data;
 
-    mailbox #( logic [CHANNEL_W - 1:0] )                          in_channel;
-    mailbox #( logic [CHANNEL_W - 1:0] )                          out_channel;
+    mailbox #( logic [CHANNEL_WIDTH - 1:0] )                                   in_channel;
+    mailbox #( logic [CHANNEL_WIDTH - 1:0] )                                   out_channel;
 
-    virtual ast_interface #( DATA_IN_W, EMPTY_IN_W, CHANNEL_W )   i_vif;
-    virtual ast_interface #( DATA_OUT_W, EMPTY_OUT_W, CHANNEL_W ) o_vif;
+    virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) i_vif;
+    virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) o_vif [TX_DIR - 1:0];
 
-    function new( input virtual ast_interface #( DATA_IN_W, EMPTY_IN_W, CHANNEL_W )   in_dut_interface,
-                  input virtual ast_interface #( DATA_OUT_W, EMPTY_OUT_W, CHANNEL_W ) out_dut_interface
+    function new( input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) in_dutif,
+                  input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) out_dutif [TX_DIR - 1:0]
                 );
 
       generated_transactions = new();
@@ -498,8 +498,8 @@ package tb_env;
       in_channel             = new();
       out_channel            = new();
 
-      i_vif                  = in_dut_interface;
-      o_vif                  = out_dut_interface;
+      i_vif                  = in_dutif;
+      o_vif                  = out_dutif;
       in_driver              = new( i_vif );
       out_driver             = new( o_vif );
       in_monitor             = new( i_vif, input_data, in_channel );
