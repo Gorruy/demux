@@ -48,53 +48,53 @@ module top_tb;
   generate 
     for ( i = 0; i < TX_DIR; i++ )
       begin : port_assignments
-        assign out_interfaces[i].data          = data[i];
-        assign out_interfaces[i].startofpacket = startofpacket[i];
-        assign out_interfaces[i].endofpacket   = endofpacket[i];
-        assign out_interfaces[i].valid         = valid[i];
-        assign out_interfaces[i].empty         = empty[i];
-        assign out_interfaces[i].channel       = channel[i];
-        assign out_interfaces[i].ready         = ready[i];
+        assign out_interfaces[i].ast_if_inst.ast_data          = data[i];
+        assign out_interfaces[i].ast_if_inst.ast_startofpacket = startofpacket[i];
+        assign out_interfaces[i].ast_if_inst.ast_endofpacket   = endofpacket[i];
+        assign out_interfaces[i].ast_if_inst.ast_valid         = valid[i];
+        assign out_interfaces[i].ast_if_inst.ast_empty         = empty[i];
+        assign out_interfaces[i].ast_if_inst.ast_channel       = channel[i];
+        assign out_interfaces[i].ast_if_inst.ast_ready         = ready[i];
       end
   endgenerate
 
-  virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) out_ifs[TX_DIR - 1:0];
+  virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 ) out_ifs[TX_DIR - 1:0];
 
   generate
     for ( i = 0; i < TX_DIR; i++ )
       begin : vifs_assignments
-        assign out_ifs[i] = out_interfaces.ast_if_inst[i];
+        assign out_ifs[i] = out_interfaces[i].ast_if_inst;
       end
   endgenerate 
 
   ast_dmx #(
-    .DATA_WIDTH          ( DATA_WIDTH                   ),
-    .CHANNEL_WIDTH       ( CHANNEL_WIDTH                ),
-    .TX_DIR              ( TX_DIR                       ),
-    .DIR_SEL_WIDTH       ( DIR_SEL_WIDTH                )
+    .DATA_WIDTH          ( DATA_WIDTH                  ),
+    .CHANNEL_WIDTH       ( CHANNEL_WIDTH               ),
+    .TX_DIR              ( TX_DIR                      ),
+    .DIR_SEL_WIDTH       ( DIR_SEL_WIDTH               )
 
    ) ast_inst (
-    .clk_i               ( clk                          ),
-    .srst_i              ( srst                         ),
+    .clk_i               ( clk                         ),
+    .srst_i              ( srst                        ),
     
-    .dir_i               ( ast_if_out.dir               ),
+    .dir_i               ( ast_if_in.dir               ),
 
-    .ast_data_i          ( ast_if_out.ast_data          ),
-    .ast_startofpacket_i ( ast_if_out.ast_startofpacket ),
-    .ast_endofpacket_i   ( ast_if_out.ast_endofpacket   ),
-    .ast_valid_i         ( ast_if_out.ast_valid         ),
-    .ast_empty_i         ( ast_if_out.ast_empty         ),
-    .ast_channel_i       ( ast_if_out.ast_channel       ),
+    .ast_data_i          ( ast_if_in.ast_data          ),
+    .ast_startofpacket_i ( ast_if_in.ast_startofpacket ),
+    .ast_endofpacket_i   ( ast_if_in.ast_endofpacket   ),
+    .ast_valid_i         ( ast_if_in.ast_valid         ),
+    .ast_empty_i         ( ast_if_in.ast_empty         ),
+    .ast_channel_i       ( ast_if_in.ast_channel       ),
 
-    .ast_ready_o         ( ast_if_out.ast_ready         ),
+    .ast_ready_o         ( ast_if_in.ast_ready         ),
 
-    .ast_data_o          ( data                         ),
-    .ast_startofpacket_o ( startofpacket                ),
-    .ast_endofpacket_o   ( endofpacket                  ),
-    .ast_valid_o         ( valid                        ),
-    .ast_empty_o         ( empty                        ),
-    .ast_channel_o       ( channel                      ),
-    .ast_ready_i         ( ready                        )
+    .ast_data_o          ( data                        ),
+    .ast_startofpacket_o ( startofpacket               ),
+    .ast_endofpacket_o   ( endofpacket                 ),
+    .ast_valid_o         ( valid                       ),
+    .ast_empty_o         ( empty                       ),
+    .ast_channel_o       ( channel                     ),
+    .ast_ready_i         ( ready                       )
   );
 
   initial 

@@ -1,22 +1,33 @@
 package tb_env;
 
   import usr_types_and_params::*;
+
+  class ReadTransactionInfo;
+  // This class will hold data read by monitor
+
+    q_byte_data_t data;
+    q_channel_t   channel;
+    q_dir_t       dir;
+
+  endclass
   
   class Transaction;
   // Instance of this class will hold all info about single transaction in
   // a form of queues, where each element in queue represents values of 
   // dut signal during transaction
 
-    data_t        data;
-    int           len;
-    channel_t     channel[$];
-    empty_in_t    empty[$];
-    queued_bits_t valid;
-    queued_bits_t ready;
-    queued_bits_t startofpacket;
-    queued_bits_t endofpacket;
-    bit           wait_dut_ready;
-    queued_bits_t reset;
+    q_data_t    data;
+    q_channel_t channel;
+    q_empty_t   empty;
+    q_bits_t    valid;
+    q_bits_t    ready;
+    q_bits_t    startofpacket;
+    q_bits_t    endofpacket;
+    q_bits_t    reset;
+    q_dir_t     dir;
+
+    int         len;
+    bit         wait_dut_ready;
 
     function new( input int tr_length = WORK_TR_LEN );
     // new will generate normal transaction
@@ -34,6 +45,7 @@ package tb_env;
           this.startofpacket.push_back( 1'b0 );
           this.endofpacket.push_back( 1'b0 );
           this.reset.push_back( 1'b0 );
+          this.dir.push_back( $urandom_range( TX_DIR - 1, 0 ) );
         end
 
       this.startofpacket[$] = 1'b1;
@@ -250,6 +262,7 @@ package tb_env;
           vif.ast_endofpacket   <= tr.endofpacket.pop_back();  
           vif.ast_data          <= tr.data.pop_back();
           vif.srst              <= tr.reset.pop_back();
+          vif.dir               <= tr.dir.pop_back();
         end
 
       // This loop will finish transaction if end of transaction and ready_o doesn't met
@@ -301,17 +314,14 @@ package tb_env;
   // and send it to Scoreboard
 
      virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) vif;
-     mailbox #( byte_data_t )                              input_data;
-     mailbox #( logic [CHANNEL_WIDTH - 1:0] )              channel_mbx;
+     mailbox #( ReadTransactionInfo )                                                         read_tr;
 
     function new ( input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) dut_interface,
-                   mailbox #( byte_data_t )                                    mbx_data,
-                   mailbox #( logic [CHANNEL_WIDTH - 1:0] )                        in_ch
+                   mailbox #( ReadTransactionInfo )                                                               mbx_tr
                  );
 
       vif         = dut_interface;
-      input_data  = mbx_data;
-      channel_mbx = in_ch;
+      read_tr     = mbx_tr;
 
     endfunction
 
@@ -323,30 +333,36 @@ package tb_env;
 
     task get_data;
 
-      byte_data_t                 data;
-      int                         start_of_packet_flag;
-      int                         timeout_ctr;
-      logic [CHANNEL_WIDTH - 1:0] channel;
+      ReadTransactionInfo tr;
+
+      q_byte_data_t data;
+      q_channel_t   channel;
+      q_dir_t       dir;
+
+      int           start_of_packet_flag;
+      int           timeout_ctr;
 
       start_of_packet_flag = 0;
-      data                 = {}; 
       timeout_ctr          = 0;
 
       while ( timeout_ctr++ < TIMEOUT )
         begin
           @( posedge vif.clk );
 
-          if ( vif.ast_startofpacket === 1'b1 && vif.ast_valid == 1'b1 && vif.ast_ready === 1'b1 )
+          if ( vif.ast_startofpacket === 1'b1 && vif.ast_valid === 1'b1 && vif.ast_ready === 1'b1 )
             begin
-              if ( start_of_packet_flag == 1 )
-                data = {};
-              else
+              if ( start_of_packet_flag != 1 )
                 begin
-                  channel = vif.ast_channel;
-                  channel_mbx.put(channel);
+                  tr                   = new;
+                  data                 = {};
+                  channel              = { vif.ast_channel };
+                  dir                  = { vif.dir };
+                  start_of_packet_flag = 1;
                 end
-              start_of_packet_flag = 1;
+              else
+                start_of_packet_flag = 1'b1;
             end
+
           if ( vif.srst === 1'b1 )
             break;
             
@@ -362,7 +378,11 @@ package tb_env;
                       data.push_back( vif.ast_data[i*8 +: 8] );
                     end
 
-                  input_data.put(data);
+                  tr.data    = data;
+                  tr.channel = channel;
+                  tr.dir     = dir;
+
+                  read_tr.put(tr);
                   return;
                 end
               else
@@ -378,7 +398,11 @@ package tb_env;
         end
       
       data.push_back( 'x );
-      input_data.put(data);
+      tr.data    = data;
+      tr.channel = channel;
+      tr.dir     = dir;
+
+      read_tr.put(tr);
 
     endtask
   
@@ -386,83 +410,92 @@ package tb_env;
   
   class Scoreboard;
   // This class will compare read and written data
+    mailbox #( ReadTransactionInfo ) output_trs [TX_DIR - 1:0];
+    mailbox #( ReadTransactionInfo ) input_trs;
 
-    mailbox #( byte_data_t )                 input_data;
-    mailbox #( byte_data_t )                 output_data;
-    mailbox #( logic [CHANNEL_WIDTH - 1:0] ) input_channel;
-    mailbox #( logic [CHANNEL_WIDTH - 1:0] ) output_channel;
-
-    function new ( mailbox #( byte_data_t )                 in_data,
-                   mailbox #( byte_data_t )                 out_data,
-                   mailbox #( logic [CHANNEL_WIDTH - 1:0] ) in_ch,
-                   mailbox #( logic [CHANNEL_WIDTH - 1:0] ) out_ch
+    function new ( mailbox #( ReadTransactionInfo ) in_trs,
+                   mailbox #( ReadTransactionInfo ) out_trs [TX_DIR - 1:0]
                  );
 
-      input_data     = in_data;
-      output_data    = out_data;
-      input_channel  = in_ch;
-      output_channel = out_ch;
+      input_trs  = in_trs;
+      output_trs = out_trs;
 
     endfunction
 
     task run;
 
-      byte_data_t                 in_data;
-      byte_data_t                 out_data;
-      logic [CHANNEL_WIDTH - 1:0] in_channel;
-      logic [CHANNEL_WIDTH - 1:0] out_channel;
+      ReadTransactionInfo out_tr [TX_DIR - 1:0];
+      ReadTransactionInfo in_tr;
 
-      if ( input_channel.num() != output_channel.num() )
-        $error("Error in read channels amount:rd%d, wr%d", output_channel.num(), input_channel.num() );
-      else 
+      input_trs.get(in_tr);
+
+      // Check if there wasn't any input tr but output appearse
+      if ( in_tr.dir.size() == 0 )
         begin
-          while ( input_channel.num() && output_channel.num() )
+          foreach ( out_tr[i] )
+            if ( out_tr[i].data.size() != 0 )
+              $error("Output without input at %d port!!!", i );
+        end
+      else
+        begin
+          foreach ( in_tr.dir[i] )
             begin
-              input_channel.get(in_channel);
-              output_channel.get(out_channel);
-
-              if ( in_channel !== out_channel )
-                $error("Read and written channels not equal:rd%d, wr%d", out_channel, in_channel);
+              if ( in_tr.data[i] != out_tr[in_tr.dir[i]].data.pop_back() )
+                $error( "Wrong output data at %d i port", i );
+              if ( in_tr.channel[i] != out_tr[in_tr.dir[i]].channel.pop_back() )
+                $error( "Wrong channel info an %d i port", i );
             end
         end
 
-      if ( input_data.num() !== output_data.num() )
-        $error( "Number of read and written transactions doesn't equal, wr:%d, rd:%d", input_data.num(), output_data.num() );
-
-      while ( input_data.num() && output_data.num() )
+      foreach ( out_tr[i] )
         begin
-          input_data.get(in_data);
-          output_data.get(out_data);
+          if ( out_tr[i].data.size() != 0 )
+            $error( "There more read data than was written at %d port!", i );
+        end
+
+      // if ( input_tr.num() != output_tr.num() )
+      //   $error( "Read amount of transactions not equal to written, rd:%d, wr:%d", input_tr.num(), output_tr.num() );
+
+      // while ( input_tr.num() && output_tr.num() )
+      //   begin
+      //     input_tr.get(in_tr);
+      //     output_tr.get(out_tr);
+
+      //     if ( in_tr.dir.size() != out_tr.dir.size() )
+      //       begin
+      //         if ( out_tr.dir.size() == 0 )
+      //           $error( out)
+      //       end
           
-          if ( in_data.size() != out_data.size() )
-            begin
-              $error( "data sizes dont match!: wr size:%d, rd size:%d ", in_data.size(), out_data.size() );
-              $displayh( "wr data:%p", in_data[$ -: WORK_TR_LEN] );
-              $displayh( "rd data:%p", out_data[$ -: WORK_TR_LEN] );
-            end
-          else
-            begin
-              foreach( in_data[i] )
-                begin
-                  if ( in_data[i] === 'x || out_data[i] === 'x && in_data[i] !== out_data[i] )
-                    begin
-                      $error("Error during transaction!! Wrong control signals values");
-                      $displayh( "wr data:%p", in_data[$ -: WORK_TR_LEN] );
-                      $displayh( "rd data:%p", out_data[$ -: WORK_TR_LEN] );
-                      $display( "Index: %d", i );
-                      break;
-                    end
-                  if ( in_data[i] !== out_data[i] )
-                    begin
-                      $error( "wrong data!" );
-                      $displayh( "wr data:%p", in_data[$ -: WORK_TR_LEN] );
-                      $displayh( "rd data:%p", out_data[$ -: WORK_TR_LEN] );
-                      $display( "Index: %d", i );
-                      break;
-                    end
-                end
-            end
-        end
+      //     if ( in_tr.data.size() != out_tr.data.size() )
+      //       begin
+      //         $error( "data sizes dont match!: wr size:%d, rd size:%d ", in_tr.data.size(), out_tr.data.size() );
+      //         $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
+      //         $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
+      //       end
+      //     else
+      //       begin
+      //         foreach( in_tr.data[i] )
+      //           begin
+      //             if ( in_tr.data[i] === 'x || out_tr.data[i] === 'x && in_tr.data[i] !== out_tr.data[i] )
+      //               begin
+      //                 $error("Error during transaction!! Wrong control signals values");
+      //                 $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
+      //                 $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
+      //                 $display( "Index: %d", i );
+      //                 break;
+      //               end
+      //             if ( in_data[i] !== out_data[i] )
+      //               begin
+      //                 $error( "wrong data!" );
+      //                 $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
+      //                 $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
+      //                 $display( "Index: %d", i );
+      //                 break;
+      //               end
+      //           end
+      //       end
+      //   end
 
     endtask
 
@@ -471,41 +504,41 @@ package tb_env;
   class Environment;
   // This class will hold all tb elements together
     
-    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  in_driver;
-    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  out_driver;
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  in_driver; 
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )       out_drivers  [TX_DIR - 1:0];
+    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )      out_monitors [TX_DIR - 1:0];
     Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) in_monitor;
-    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) out_monitor;
     Scoreboard                                                                 scoreboard;
     Generator                                                                  generator;
 
     mailbox #( Transaction )                                                   generated_transactions;
-    mailbox #( byte_data_t )                                                   input_data;
-    mailbox #( byte_data_t )                                                   output_data;
-
-    mailbox #( logic [CHANNEL_WIDTH - 1:0] )                                   in_channel;
-    mailbox #( logic [CHANNEL_WIDTH - 1:0] )                                   out_channel;
+    mailbox #( ReadTransactionInfo )                                           input_trs;
+    mailbox #( ReadTransactionInfo )                                           output_trs  [TX_DIR - 1:0];
 
     virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) i_vif;
-    virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) o_vif [TX_DIR - 1:0];
+    virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1      ) o_vifs [TX_DIR - 1:0];
 
     function new( input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) in_dutif,
-                  input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) out_dutif [TX_DIR - 1:0]
+                  input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )      out_dutif [TX_DIR - 1:0]
                 );
 
       generated_transactions = new();
-      input_data             = new();
-      output_data            = new();
-      in_channel             = new();
-      out_channel            = new();
+      input_trs              = new();
 
       i_vif                  = in_dutif;
-      o_vif                  = out_dutif;
+      o_vifs                 = out_dutif;
       in_driver              = new( i_vif );
-      out_driver             = new( o_vif );
-      in_monitor             = new( i_vif, input_data, in_channel );
-      out_monitor            = new( o_vif, output_data, out_channel );
-      scoreboard             = new( input_data, output_data, in_channel, out_channel );
+      scoreboard             = new( input_trs, output_trs );
       generator              = new( generated_transactions );
+
+      in_monitor             = new( i_vif, input_trs );
+
+      foreach ( out_drivers[i] )
+        begin
+          output_trs[i]   = new();
+          out_drivers[i]  = new( o_vifs[i] );
+          out_monitors[i] = new( o_vifs[i], output_trs[i] );
+        end
       
     endfunction
     
@@ -516,7 +549,6 @@ package tb_env;
       generator.run();
 
       in_driver.in_flush();
-      out_driver.out_flush();
   
       @( posedge i_vif.clk );
 
@@ -528,9 +560,13 @@ package tb_env;
 
           fork 
             in_driver.drive_in(tr);
-            out_driver.drive_out(tr);
-            in_monitor.run();
-            out_monitor.run();
+            foreach ( out_drivers[i] )
+              begin
+                fork
+                  out_drivers[i].drive_out(tr); 
+                  out_monitors[i].run();
+                join
+              end
           join
 
           scoreboard.run();

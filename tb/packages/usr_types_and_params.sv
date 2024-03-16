@@ -16,13 +16,12 @@ package usr_types_and_params;
   parameter int NUMBER_OF_ONE_LENGHT_RUNS = 1;
   parameter int NUMBER_OF_RANDOM_RUNS     = 10;
 
-  typedef logic [DATA_WIDTH - 1:0]    data_t[$];
-  typedef int                         delays_t[$];
-  typedef logic [CHANNEL_WIDTH - 1:0] channel_t;
-  typedef logic [EMPTY_WIDTH - 1:0]   empty_in_t;
-  typedef logic [EMPTY_WIDTH - 1:0]   empty_out_t;
-  typedef logic [7:0]                 byte_data_t[$];
-  
-  typedef bit                         queued_bits_t[$];
+  typedef logic [DATA_WIDTH - 1:0]    q_data_t[$];
+  typedef int                         q_delays_t[$];
+  typedef logic [CHANNEL_WIDTH - 1:0] q_channel_t[$];
+  typedef logic [EMPTY_WIDTH - 1:0]   q_empty_t[$];
+  typedef logic [7:0]                 q_byte_data_t[$];
+  typedef logic [DIR_SEL_WIDTH - 1:0] q_dir_t[$];
+  typedef bit                         q_bits_t[$];
 
 endpackage
