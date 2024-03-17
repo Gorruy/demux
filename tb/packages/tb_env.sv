@@ -321,8 +321,8 @@ package tb_env;
                    mailbox #( ReadTransactionInfo )                                                               mbx_tr
                  );
 
-      vif         = dut_interface;
-      read_tr     = mbx_tr;
+      this.vif     = dut_interface;
+      this.read_tr = mbx_tr;
 
     endfunction
 
@@ -336,54 +336,47 @@ package tb_env;
 
       ReadTransactionInfo tr;
 
-      q_byte_data_t data;
-      q_channel_t   channel;
-      q_dir_t       dir;
-
       int           start_of_packet_flag;
       int           timeout_ctr;
+
+      tr                   = new;
 
       start_of_packet_flag = 0;
       timeout_ctr          = 0;
 
       while ( timeout_ctr++ < TIMEOUT )
         begin
-          @( posedge vif.clk );
+          @( posedge this.vif.clk );
 
-          if ( vif.ast_startofpacket === 1'b1 && vif.ast_valid === 1'b1 && vif.ast_ready === 1'b1 )
+          if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
               if ( start_of_packet_flag != 1 )
                 begin
                   tr                   = new;
-                  data                 = {};
-                  channel              = { vif.ast_channel };
-                  dir                  = { vif.dir };
                   start_of_packet_flag = 1;
+                  tr.channel.push_back(this.vif.ast_channel);
+                  tr.dir.push_back(this.vif.dir);
                 end
               else
                 start_of_packet_flag = 1'b1;
             end
 
-          if ( vif.srst === 1'b1 )
+          if ( this.vif.srst === 1'b1 )
             break;
             
-          if ( vif.ast_valid === 1'b1 && vif.ast_ready === 1'b1 && start_of_packet_flag )
+          if ( this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 && start_of_packet_flag )
             begin
               // Transaction without errors can be finished only when endofpacket raised
               if ( vif.ast_endofpacket === 1'b1 )
                 begin
                   timeout_ctr = 0;
 
-                  for ( int i = 0; i < 2**EMPTY_WIDTH - vif.ast_empty; i++ )
+                  for ( int i = 0; i < 2**EMPTY_WIDTH - this.vif.ast_empty; i++ )
                     begin
-                      data.push_back( vif.ast_data[i*8 +: 8] );
+                      tr.data.push_back( this.vif.ast_data[i*8 +: 8] );
                     end
 
-                  tr.data    = data;
-                  tr.channel = channel;
-                  tr.dir     = dir;
-
-                  read_tr.put(tr);
+                  this.read_tr.put(tr);
                   return;
                 end
               else
@@ -392,18 +385,15 @@ package tb_env;
 
                   for ( int i = 0; i < 2**EMPTY_WIDTH; i++ )
                     begin
-                      data.push_back( vif.ast_data[i*8 +: 8] );
+                      tr.data.push_back( this.vif.ast_data[i*8 +: 8] );
                     end
                 end
             end
         end
       
-      data.push_back( 'x );
-      tr.data    = data;
-      tr.channel = channel;
-      tr.dir     = dir;
+      tr.data.push_back('x);
 
-      read_tr.put(tr);
+      this.read_tr.put(tr);
 
     endtask
   
@@ -429,13 +419,15 @@ package tb_env;
       ReadTransactionInfo in_tr;
 
       input_trs.get(in_tr);
+      foreach (out_tr[i])
+        output_trs[i].get(out_tr[i]);
 
       // Check if there wasn't any input tr but output appearse
       if ( in_tr.dir.size() == 0 )
         begin
           foreach ( out_tr[i] )
             if ( out_tr[i].data.size() != 0 )
-              $error("Output without input at %d port!!!", i );
+              $error( "Output without input at %d port!!!", i );
         end
       else
         begin
@@ -453,51 +445,6 @@ package tb_env;
           if ( out_tr[i].data.size() != 0 )
             $error( "There more read data than was written at %d port!", i );
         end
-
-      // if ( input_tr.num() != output_tr.num() )
-      //   $error( "Read amount of transactions not equal to written, rd:%d, wr:%d", input_tr.num(), output_tr.num() );
-
-      // while ( input_tr.num() && output_tr.num() )
-      //   begin
-      //     input_tr.get(in_tr);
-      //     output_tr.get(out_tr);
-
-      //     if ( in_tr.dir.size() != out_tr.dir.size() )
-      //       begin
-      //         if ( out_tr.dir.size() == 0 )
-      //           $error( out)
-      //       end
-          
-      //     if ( in_tr.data.size() != out_tr.data.size() )
-      //       begin
-      //         $error( "data sizes dont match!: wr size:%d, rd size:%d ", in_tr.data.size(), out_tr.data.size() );
-      //         $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
-      //         $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
-      //       end
-      //     else
-      //       begin
-      //         foreach( in_tr.data[i] )
-      //           begin
-      //             if ( in_tr.data[i] === 'x || out_tr.data[i] === 'x && in_tr.data[i] !== out_tr.data[i] )
-      //               begin
-      //                 $error("Error during transaction!! Wrong control signals values");
-      //                 $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
-      //                 $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
-      //                 $display( "Index: %d", i );
-      //                 break;
-      //               end
-      //             if ( in_data[i] !== out_data[i] )
-      //               begin
-      //                 $error( "wrong data!" );
-      //                 $displayh( "wr data:%p", in_tr.data[$ -: WORK_TR_LEN] );
-      //                 $displayh( "rd data:%p", out_tr.data[$ -: WORK_TR_LEN] );
-      //                 $display( "Index: %d", i );
-      //                 break;
-      //               end
-      //           end
-      //       end
-      //   end
-
     endtask
 
   endclass
@@ -505,16 +452,16 @@ package tb_env;
   class Environment;
   // This class will hold all tb elements together
     
-    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )  in_driver; 
-    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )       out_drivers  [TX_DIR - 1:0];
-    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )      out_monitors [TX_DIR - 1:0];
-    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) in_monitor;
-    Scoreboard                                                                 scoreboard;
-    Generator                                                                  generator;
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )                in_driver; 
+    Driver #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )                     out_drivers  [TX_DIR - 1:0];
+    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )                    out_monitors [TX_DIR - 1:0];
+    Monitor #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR )               in_monitor;
+    Scoreboard                                                                               scoreboard;
+    Generator                                                                                generator;
 
-    mailbox #( Transaction )                                                   generated_transactions;
-    mailbox #( ReadTransactionInfo )                                           input_trs;
-    mailbox #( ReadTransactionInfo )                                           output_trs  [TX_DIR - 1:0];
+    mailbox #( Transaction )                                                                 generated_transactions;
+    mailbox #( ReadTransactionInfo )                                                         input_trs;
+    mailbox #( ReadTransactionInfo )                                                         output_trs  [TX_DIR - 1:0];
 
     virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, TX_DIR ) i_vif;
     virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1      ) o_vifs [TX_DIR - 1:0];
@@ -523,16 +470,11 @@ package tb_env;
                   input virtual ast_interface #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, DIR_SEL_WIDTH, 1 )      out_dutif [TX_DIR - 1:0]
                 );
 
-      generated_transactions = new();
-      input_trs              = new();
-
       i_vif                  = in_dutif;
       o_vifs                 = out_dutif;
-      in_driver              = new( i_vif );
-      scoreboard             = new( input_trs, output_trs );
-      generator              = new( generated_transactions );
 
-      in_monitor             = new( i_vif, input_trs );
+      generated_transactions = new();
+      input_trs              = new();
 
       foreach ( out_drivers[i] )
         begin
@@ -540,6 +482,11 @@ package tb_env;
           out_drivers[i]  = new( o_vifs[i] );
           out_monitors[i] = new( o_vifs[i], output_trs[i] );
         end
+
+      in_driver              = new( i_vif );
+      scoreboard             = new( input_trs, output_trs );
+      generator              = new( generated_transactions );
+      in_monitor             = new( i_vif, input_trs );
       
     endfunction
     
@@ -563,13 +510,14 @@ package tb_env;
 
           fork 
             in_driver.drive_in(tr);
+            in_monitor.run();
             begin
               for ( int k = 0; k < TX_DIR; k++ )
                 begin
                   fork
                     automatic int i = k;
                     out_drivers[i].drive_out(tr); 
-                    //out_monitors[i].run();
+                    out_monitors[i].run();
                   join_none
                 end
             end
