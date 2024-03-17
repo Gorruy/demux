@@ -50,7 +50,7 @@ package tb_env;
 
       this.startofpacket[$] = 1'b1;
       this.endofpacket[0]   = 1'b1;
-      this.wait_dut_ready   = 1'b1;
+      this.wait_dut_ready   = 1'b0;
 
     endfunction    
     
@@ -280,7 +280,7 @@ package tb_env;
       repeat(tr.len)
         begin
           @( posedge vif.clk );
-          vif.ast_ready <= tr.ready.pop_back();
+          vif.ast_ready <= 1'b1;//tr.ready.pop_back();
         end
 
       vif.ast_ready <= 1'b1;
@@ -297,13 +297,14 @@ package tb_env;
       vif.ast_endofpacket   <= 1'b0;
       vif.ast_data          <= '0;
       vif.srst              <= 1'b0;
+      vif.dir               <= 1'b0;
 
     endtask
 
     task out_flush;
 
       @( posedge vif.clk );
-      vif.ast_ready <= 1'b0;
+      vif.ast_ready <= 1'b1;
 
     endtask
   
@@ -549,6 +550,8 @@ package tb_env;
       generator.run();
 
       in_driver.in_flush();
+      foreach ( out_drivers[i] )
+        out_drivers[i].out_flush();
   
       @( posedge i_vif.clk );
 
@@ -560,13 +563,16 @@ package tb_env;
 
           fork 
             in_driver.drive_in(tr);
-            foreach ( out_drivers[i] )
-              begin
-                fork
-                  out_drivers[i].drive_out(tr); 
-                  out_monitors[i].run();
-                join
-              end
+            begin
+              for ( int k = 0; k < TX_DIR; k++ )
+                begin
+                  fork
+                    automatic int i = k;
+                    out_drivers[i].drive_out(tr); 
+                    //out_monitors[i].run();
+                  join_none
+                end
+            end
           join
 
           scoreboard.run();

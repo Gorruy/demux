@@ -54,7 +54,7 @@ module top_tb;
         assign out_interfaces[i].ast_if_inst.ast_valid         = valid[i];
         assign out_interfaces[i].ast_if_inst.ast_empty         = empty[i];
         assign out_interfaces[i].ast_if_inst.ast_channel       = channel[i];
-        assign out_interfaces[i].ast_if_inst.ast_ready         = ready[i];
+        assign ready[i]                                        = out_interfaces[i].ast_if_inst.ast_ready;
       end
   endgenerate
 
@@ -99,7 +99,6 @@ module top_tb;
 
   initial 
     begin
-
       Environment env;
       env = new( ast_if_in, out_ifs );
 
