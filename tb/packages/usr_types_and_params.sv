@@ -13,7 +13,7 @@ package usr_types_and_params;
   parameter int TIMEOUT                   = WORK_TR_LEN * 3;
   parameter int DR_TIMEOUT                = WORK_TR_LEN;
   parameter int MAX_DATA_VALUE            = 2**DATA_WIDTH - 1;
-  parameter int NUMBER_OF_ONE_LENGHT_RUNS = 1;
+  parameter int NUMBER_OF_ONE_LENGHT_RUNS = 10;
   parameter int NUMBER_OF_RANDOM_RUNS     = 10;
 
   typedef logic [DATA_WIDTH - 1:0]    q_data_t[$];

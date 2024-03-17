@@ -7,7 +7,7 @@ package tb_env;
 
     q_byte_data_t data;
     q_channel_t   channel;
-    q_dir_t       dir;
+    q_dir_t       dir;     // Will hold only valid dirs
 
   endclass
   
@@ -20,11 +20,12 @@ package tb_env;
     q_channel_t channel;
     q_empty_t   empty;
     q_bits_t    valid;
-    q_bits_t    ready;
     q_bits_t    startofpacket;
     q_bits_t    endofpacket;
     q_bits_t    reset;
     q_dir_t     dir;
+
+    string      ready_type;
 
     int         len;
     bit         wait_dut_ready;
@@ -41,12 +42,13 @@ package tb_env;
           this.channel.push_back( '0 );
           this.empty.push_back( '0 );
           this.valid.push_back( 1'b1 );
-          this.ready.push_back( 1'b1 );
           this.startofpacket.push_back( 1'b0 );
           this.endofpacket.push_back( 1'b0 );
           this.reset.push_back( 1'b0 );
           this.dir.push_back( $urandom_range( TX_DIR - 1, 0 ) );
         end
+
+      this.ready_type       = "Const one";
 
       this.startofpacket[$] = 1'b1;
       this.endofpacket[0]   = 1'b1;
@@ -77,11 +79,16 @@ package tb_env;
       generated_transactions.put(tr);
 
       // Transactions of length one
-      repeat ( NUMBER_OF_ONE_LENGHT_RUNS )
+      tr = new( .tr_length(NUMBER_OF_ONE_LENGHT_RUNS) );
+
+      repeat ( tr.len )
         begin
-          tr = new( .tr_length(1) );
-          generated_transactions.put(tr);
+          tr.valid.push_back( 1'b1 );
+          tr.startofpacket.push_back( 1'b1 );
+          tr.endofpacket.push_back( 1'b1 );
+          tr.dir.push_back( $urandom_range( TX_DIR - 1, 0 ) );
         end
+        generated_transactions.put(tr);
 
       // Transaction without valid
       tr = new();
@@ -137,12 +144,8 @@ package tb_env;
         begin
           tr = new();
 
-          foreach( tr.data[i] )
-            begin
-              tr.ready[i] = $urandom_range( 1, 0 );
-            end
-
-          tr.wait_dut_ready   = 1'b0;
+          tr.ready_type     = "Random";
+          tr.wait_dut_ready = 1'b0;
 
           generated_transactions.put(tr);
 
@@ -153,12 +156,8 @@ package tb_env;
         begin
           tr = new();
 
-          repeat(tr.len)
-            begin
-              tr.ready.push_back( 1'b0 );
-            end
-
-          tr.wait_dut_ready   = 1'b1;
+          tr.ready_type     = "Const zero";
+          tr.wait_dut_ready = 1'b1;
 
           generated_transactions.put(tr);
         end
@@ -210,13 +209,13 @@ package tb_env;
 
           foreach( tr.data[i] )
             begin
-              tr.ready[i]       = $urandom_range( 1, 0 );
               tr.valid[i]       = $urandom_range( 1, 0 );
               tr.empty[i]       = $urandom_range( 2**EMPTY_WIDTH, 0 );
               tr.channel[i]     = $urandom_range( 2**CHANNEL_WIDTH, 0 );
               tr.endofpacket[i] = $urandom_range( 1, 0 );
             end
 
+          tr.ready_type     = "Random";
           tr.valid[$]       = 1'b1;
           tr.reset[0]       = 1'b1;
           tr.endofpacket[$] = 1'b0;
@@ -275,12 +274,36 @@ package tb_env;
 
     endtask
 
-    task drive_out( input Transaction tr );
+    task drive_out( input string ready_type );
 
-      repeat(tr.len)
+      int wr_timeout;
+
+      wr_timeout = 0;
+
+      while ( wr_timeout < TIMEOUT )
         begin
           @( posedge vif.clk );
-          vif.ast_ready <= 1'b1;//tr.ready.pop_back();
+
+          case (ready_type)
+
+            "Random": begin
+              vif.ast_ready <= ~vif.ast_ready;
+            end
+
+            "Const one": begin
+              vif.ast_ready <= 1'b1;
+            end
+
+            "Const zero": begin
+              vif.ast_ready <= 1'b0;
+            end
+
+            default: begin
+              vif.ast_ready <= 'x;
+            end
+
+          endcase
+
         end
 
       vif.ast_ready <= 1'b1;
@@ -336,13 +359,10 @@ package tb_env;
 
       ReadTransactionInfo tr;
 
-      int           start_of_packet_flag;
       int           timeout_ctr;
 
-      tr                   = new;
-
-      start_of_packet_flag = 0;
-      timeout_ctr          = 0;
+      tr          = new;
+      timeout_ctr = 0;
 
       while ( timeout_ctr++ < TIMEOUT )
         begin
@@ -350,21 +370,17 @@ package tb_env;
 
           if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
-              if ( start_of_packet_flag != 1 )
-                begin
-                  tr                   = new;
-                  start_of_packet_flag = 1;
-                  tr.channel.push_back(this.vif.ast_channel);
-                  tr.dir.push_back(this.vif.dir);
-                end
-              else
-                start_of_packet_flag = 1'b1;
+              // If valid startofpacket appears in a middle of transaction, previous data is dropped
+              tr = new;
+
+              tr.channel.push_back(this.vif.ast_channel);
+              tr.dir.push_back(this.vif.dir);
             end
 
           if ( this.vif.srst === 1'b1 )
             break;
             
-          if ( this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 && start_of_packet_flag )
+          if ( this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
               // Transaction without errors can be finished only when endofpacket raised
               if ( vif.ast_endofpacket === 1'b1 )
@@ -390,8 +406,6 @@ package tb_env;
                 end
             end
         end
-      
-      tr.data.push_back('x);
 
       this.read_tr.put(tr);
 
@@ -418,33 +432,38 @@ package tb_env;
       ReadTransactionInfo out_tr [TX_DIR - 1:0];
       ReadTransactionInfo in_tr;
 
-      input_trs.get(in_tr);
-      foreach (out_tr[i])
-        output_trs[i].get(out_tr[i]);
+      while ( input_trs.num() )
+        begin
+          input_trs.get(in_tr);
+          foreach (out_tr[i])
+            output_trs[i].get(out_tr[i]);
 
-      // Check if there wasn't any input tr but output appearse
-      if ( in_tr.dir.size() == 0 )
-        begin
+          if ( in_tr.dir.size() == 0 )
+            foreach(out_tr[i])
+              if ( out_tr[i].data.size() != 0 )
+                begin
+                  $error( "Protocol violation, valid data appears at output ports without valid transaction at input");
+                  $displayh( "port:%d, data:%p", i, out_tr[i].data );
+                end
+
           foreach ( out_tr[i] )
-            if ( out_tr[i].data.size() != 0 )
-              $error( "Output without input at %d port!!!", i );
-        end
-      else
-        begin
-          foreach ( in_tr.dir[i] )
             begin
-              if ( in_tr.data[i] != out_tr[in_tr.dir[i]].data.pop_back() )
-                $error( "Wrong output data at %d i port", i );
-              if ( in_tr.channel[i] != out_tr[in_tr.dir[i]].channel.pop_back() )
-                $error( "Wrong channel info an %d i port", i );
+              if ( out_tr[i].data.size() != 0 && in_tr.dir[0] != i )
+                begin
+                  $error( "Valid data appears at wrong port");
+                  $displayh( "port:%d, data:%p", i, out_tr[i].data );
+                end
+            end
+
+          if ( in_tr.data != out_tr[in_tr.dir[0]].data )
+            begin
+              $error( "Wrong data!!" );
+              $displayh("wr:%p", in_tr.data );
+              $displayh("rd:%p", out_tr[in_tr.dir[0]].data );
+              $displayh("port:%d", in_tr.dir[0] );
             end
         end
 
-      foreach ( out_tr[i] )
-        begin
-          if ( out_tr[i].data.size() != 0 )
-            $error( "There more read data than was written at %d port!", i );
-        end
     endtask
 
   endclass
@@ -516,7 +535,7 @@ package tb_env;
                 begin
                   fork
                     automatic int i = k;
-                    out_drivers[i].drive_out(tr); 
+                    out_drivers[i].drive_out(tr.ready_type); 
                     out_monitors[i].run();
                   join_none
                 end
