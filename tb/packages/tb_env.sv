@@ -25,15 +25,18 @@ package tb_env;
     q_bits_t    reset;
     q_dir_t     dir;
 
-    string      ready_type;
+    ready_t     ready_type;
 
     int         len;
     bit         wait_dut_ready;
 
-    function new( input int tr_length = WORK_TR_LEN );
+    function new( input int     tr_length = WORK_TR_LEN,
+                  input ready_t rd_t      = CONST_ONE 
+                );
     // new will generate normal transaction
 
-      this.len = tr_length;
+      this.len        = tr_length;
+      this.ready_type = rd_t;
 
       repeat(this.len)
         begin
@@ -47,8 +50,6 @@ package tb_env;
           this.reset.push_back( 1'b0 );
           this.dir.push_back( $urandom_range( TX_DIR - 1, 0 ) );
         end
-
-      this.ready_type       = "Const one";
 
       this.startofpacket[$] = 1'b1;
       this.endofpacket[0]   = 1'b1;
@@ -142,9 +143,8 @@ package tb_env;
       // Transactions of work length with random ready
       repeat (NUMBER_OF_TEST_RUNS)
         begin
-          tr = new();
+          tr = new( .rd_t(RANDOM) );
 
-          tr.ready_type     = "Random";
           tr.wait_dut_ready = 1'b0;
 
           generated_transactions.put(tr);
@@ -154,16 +154,14 @@ package tb_env;
       // Transactions of work length without ready
       repeat (NUMBER_OF_TEST_RUNS)
         begin
-          tr = new();
-
-          tr.ready_type     = "Const zero";
-          tr.wait_dut_ready = 1'b1;
+          tr = new( .rd_t(CONST_ZERO) );
+          tr.wait_dut_ready = 1'b0;
 
           generated_transactions.put(tr);
         end
 
       // transaction without startofpacket
-      tr = new();
+      tr = new( .rd_t(RANDOM));
 
       foreach( tr.data[i] )
         begin
@@ -205,7 +203,7 @@ package tb_env;
       repeat(NUMBER_OF_RANDOM_RUNS)
         begin
 
-          tr = new();
+          tr = new( .rd_t(RANDOM) );
 
           foreach( tr.data[i] )
             begin
@@ -215,7 +213,6 @@ package tb_env;
               tr.endofpacket[i] = $urandom_range( 1, 0 );
             end
 
-          tr.ready_type     = "Random";
           tr.valid[$]       = 1'b1;
           tr.reset[0]       = 1'b1;
           tr.endofpacket[$] = 1'b0;
@@ -274,7 +271,7 @@ package tb_env;
 
     endtask
 
-    task drive_out( input string ready_type );
+    task drive_out( input ready_t ready_type );
 
       int wr_timeout;
 
@@ -283,19 +280,24 @@ package tb_env;
       while ( wr_timeout < TIMEOUT )
         begin
           @( posedge vif.clk );
+          wr_timeout += 1;
 
           case (ready_type)
 
-            "Random": begin
-              vif.ast_ready <= ~vif.ast_ready;
+            CONST_ZERO: begin
+              vif.ast_ready <= 1'b0;
             end
 
-            "Const one": begin
+            RANDOM: begin
+              vif.ast_ready <= $urandom_range(1, 0);
+            end
+
+            CONST_ONE: begin
               vif.ast_ready <= 1'b1;
             end
 
-            "Const zero": begin
-              vif.ast_ready <= 1'b0;
+            ALTERNATING: begin
+              vif.ast_ready <= ~vif.ast_ready;
             end
 
             default: begin
@@ -305,8 +307,6 @@ package tb_env;
           endcase
 
         end
-
-      vif.ast_ready <= 1'b1;
 
     endtask
 
@@ -356,10 +356,11 @@ package tb_env;
     endtask
 
     task get_data;
+    // This task will gather all valid data during transaction, even without startofpacket and endofpacket
 
       ReadTransactionInfo tr;
 
-      int           timeout_ctr;
+      int                 timeout_ctr;
 
       tr          = new;
       timeout_ctr = 0;
@@ -368,17 +369,16 @@ package tb_env;
         begin
           @( posedge this.vif.clk );
 
+          if ( this.vif.srst === 1'b1 )
+            break;
+
           if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
-              // If valid startofpacket appears in a middle of transaction, previous data is dropped
               tr = new;
 
               tr.channel.push_back(this.vif.ast_channel);
               tr.dir.push_back(this.vif.dir);
             end
-
-          if ( this.vif.srst === 1'b1 )
-            break;
             
           if ( this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin

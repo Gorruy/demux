@@ -7,7 +7,7 @@ package usr_types_and_params;
 
   parameter int DIR_SEL_WIDTH             = TX_DIR == 1 ? 1 : $clog2( TX_DIR );
 
-  parameter int NUMBER_OF_TEST_RUNS       = 2;
+  parameter int NUMBER_OF_TEST_RUNS       = 10;
   parameter int MAX_TR_LEN                = 1024;
   parameter int WORK_TR_LEN               = 10;
   parameter int TIMEOUT                   = WORK_TR_LEN * 3;
@@ -23,5 +23,12 @@ package usr_types_and_params;
   typedef logic [7:0]                 q_byte_data_t[$];
   typedef logic [DIR_SEL_WIDTH - 1:0] q_dir_t[$];
   typedef bit                         q_bits_t[$];
+
+  typedef enum int {
+    RANDOM,
+    CONST_ONE,
+    CONST_ZERO,
+    ALTERNATING
+  } ready_t;
 
 endpackage

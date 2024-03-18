@@ -7,6 +7,7 @@ module top_tb;
   bit                           srst;
   bit                           srst_done;
 
+  // Supporting signals to connect generated output interfaces to dut
   logic [DATA_WIDTH    - 1 : 0] data          [TX_DIR-1:0];
   logic                         startofpacket [TX_DIR-1:0];
   logic                         endofpacket   [TX_DIR-1:0];
@@ -28,6 +29,7 @@ module top_tb;
     .srst ( srst ) 
   );
 
+  // Genereting interface per one port's set
   genvar i;
   generate
     for ( i = 0; i < TX_DIR; i++ )
