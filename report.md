@@ -8,7 +8,7 @@ Time: 895 ps  Scope: tb_env.Scoreboard.run File: packages/tb_env.sv Line: 462`
 `Error: Unexpected data at          3 port
 Time: 2015 ps  Scope: tb_env.Scoreboard.run File: packages/tb_env.sv Line: 449`
 
-3. Модуль начал выдавать данные на неправильный порт даже при полностью подтвержденном startofpacket: первая порция данных была выставлена на правильный порт, сотальные - нет.
+3. Модуль начал выдавать данные на неправильный порт даже при полностью подтвержденном startofpacket: первая порция данных была выставлена на правильный порт, сотальные - нет. Произошло это после завершения предыдущей транзакции с ошибкой: endofpacet не был подтвержден
 
 `Error: Wrong data at port
 Time: 32465 ps  Scope: tb_env.Scoreboard.run File: packages/tb_env.sv Line: 471`
