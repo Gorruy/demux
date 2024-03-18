@@ -198,26 +198,17 @@ package tb_env;
           tr.reset[i] = 1'b1;
         end
 
-      // full random transaction finished with reset
-      repeat(NUMBER_OF_RANDOM_RUNS)
-        begin
+      // transaction finished with reset
+      tr = new();
+      tr.reset[0] = 1'b1;
 
-          tr = new( .rd_t(RANDOM) );
+      generated_transactions.put(tr);
 
-          foreach( tr.data[i] )
-            begin
-              tr.valid[i]       = $urandom_range( 1, 0 );
-              tr.empty[i]       = $urandom_range( 2**EMPTY_WIDTH, 0 );
-              tr.channel[i]     = $urandom_range( 2**CHANNEL_WIDTH, 0 );
-              tr.endofpacket[i] = $urandom_range( 1, 0 );
-            end
+      // transaction started with reset
+      tr = new();
+      tr.reset[$] = 1'b1;
 
-          tr.valid[$]       = 1'b1;
-          tr.reset[0]       = 1'b1;
-          tr.endofpacket[$] = 1'b0;
-          generated_transactions.put(tr);
-
-        end
+      generated_transactions.put(tr);
 
     endtask 
     
@@ -372,7 +363,7 @@ package tb_env;
           @( posedge this.vif.clk );
 
           if ( this.vif.srst === 1'b1 )
-            return;
+            break;
 
           if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
