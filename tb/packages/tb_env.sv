@@ -60,7 +60,7 @@ package tb_env;
   endclass
   
   class Generator;
-  // This class will generate random transactions
+  // This class will generate transactions
 
     mailbox #( Transaction ) generated_transactions;
 
@@ -111,9 +111,6 @@ package tb_env;
             begin
               tr.valid[i] = $urandom_range( 1, 0 );
             end
-
-          tr.valid[$]         = 1'b1;
-          tr.valid[0]         = 1'b1;
 
           generated_transactions.put(tr);
         end
@@ -279,15 +276,11 @@ package tb_env;
 
       wr_timeout = 0;
 
-      while ( wr_timeout < TIMEOUT )
+      while ( wr_timeout++ < TIMEOUT )
         begin
           @( posedge vif.clk );
-          if ( vif.ast_valid === 1'b1 && vif.ast_endofpacket === 1'b1 )
-            break;
-          else if ( vif.ast_valid === 1'b1 )
+          if ( vif.ast_valid === 1'b1 )
             wr_timeout = 0;
-          else
-            wr_timeout += 1;
 
           case (ready_type)
 
@@ -371,7 +364,7 @@ package tb_env;
 
       int                 timeout_ctr;
 
-      tr          = new;
+      tr          = new();
       timeout_ctr = 0;
 
       while ( timeout_ctr++ < TIMEOUT )
@@ -379,11 +372,11 @@ package tb_env;
           @( posedge this.vif.clk );
 
           if ( this.vif.srst === 1'b1 )
-            break;
+            return;
 
           if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
             begin
-              tr = new;
+              tr = new();
 
               tr.channel.push_back(this.vif.ast_channel);
               tr.dir.push_back(this.vif.dir);
@@ -402,6 +395,7 @@ package tb_env;
                     end
 
                   this.read_tr.put(tr);
+                  tr = new();
                 end
               else
                 begin
@@ -415,6 +409,7 @@ package tb_env;
             end
         end
 
+      this.read_tr.put(tr);
 
     endtask
   
@@ -444,18 +439,26 @@ package tb_env;
           input_trs.get(in_tr);
           
           if ( in_tr.dir.size() == 0 ) // Check if there is no input valid transaction but output presents
-            foreach ( output_trs[i] )
-              if ( output_trs[i].num() != 0 )
-                begin
-                  $error("Unexpected data at%d port",i );
-                  break;
-                end
+            begin
+              foreach ( output_trs[i] )
+                if ( output_trs[i].num() != 0 )
+                  begin
+                    output_trs[i].get(out_tr);
+                    if ( out_tr.data.size() != 0 )
+                      begin
+                        $error("Unexpected data at%d port", i );
+                      end
+                    break;
+                  end
+              continue;
+            end
 
-          foreach (in_tr.dir[i])
+          foreach (in_tr.dir[i]) // In loop for cases when multiple startofpacket in one transaction
             begin
               if ( output_trs[in_tr.dir[i]].try_get(out_tr) == 0 )
                 begin
-                  $error("Writtend data is not at right output port!");
+                  $error("There is no data at expected port!");
+                  $display( "Port:%d", in_tr.dir[i] );
                   break;
                 end
               else
@@ -472,36 +475,12 @@ package tb_env;
                 end
             end
 
-          // Clean up output mailboxes
-          foreach ( output_trs[i] )
-            while ( output_trs[i].num() )
-              output_trs[i].get(out_tr);
-
-          // if ( in_tr.dir.size() == 0 )
-          //   foreach(out_tr[i])
-          //     if ( out_tr[i].data.size() != 0 )
-          //       begin
-          //         $error( "Protocol violation, valid data appears at output ports without valid transaction at input");
-          //         $displayh( "port:%d, data:%p", i, out_tr[i].data );
-          //       end
-
-          // foreach ( out_tr[i] )
-          //   begin
-          //     if ( out_tr[i].data.size() != 0 && in_tr.dir[0] != i )
-          //       begin
-          //         $error( "Valid data appears at wrong port");
-          //         $displayh( "port:%d, data:%p", i, out_tr[i].data );
-          //       end
-          //   end
-
-          // if ( in_tr.data != out_tr[in_tr.dir[0]].data )
-          //   begin
-          //     $error( "Wrong data!!" );
-          //     $displayh("wr:%p", in_tr.data );
-          //     $displayh("rd:%p", out_tr[in_tr.dir[0]].data );
-          //     $displayh("port:%d", in_tr.dir[0] );
-          //   end
         end
+
+        // Clean up output mailboxes
+        foreach ( output_trs[i] )
+          while ( output_trs[i].num() )
+            output_trs[i].get(out_tr);
 
     endtask
 
