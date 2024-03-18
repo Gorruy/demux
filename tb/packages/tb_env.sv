@@ -179,8 +179,8 @@ package tb_env;
 
         end
 
-      // Normal transaction of max length
-      tr = new(.tr_length(MAX_TR_LEN));
+      // Normal transaction of max length with alternating ready
+      tr = new(.tr_length(MAX_TR_LEN), .rd_t(ALTERNATING) );
 
       generated_transactions.put(tr);
 
@@ -280,7 +280,10 @@ package tb_env;
       while ( wr_timeout < TIMEOUT )
         begin
           @( posedge vif.clk );
-          wr_timeout += 1;
+          if ( vif.ast_valid === 1'b1 )
+            wr_timeout = 0;
+          else
+            wr_timeout += 1;
 
           case (ready_type)
 
@@ -539,6 +542,7 @@ package tb_env;
                     out_monitors[i].run();
                   join_none
                 end
+              wait fork;
             end
           join
 
