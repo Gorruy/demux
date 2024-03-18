@@ -210,6 +210,24 @@ package tb_env;
 
       generated_transactions.put(tr);
 
+      // Transactions of work length with random conf except start and end
+      repeat (NUMBER_OF_TEST_RUNS)
+        begin
+          tr = new( .tr_length(WORK_TR_LEN + 1), .rd_t(CONST_ZERO) );
+          tr.wait_dut_ready = 1'b0;
+
+          for ( int i = 0; i < tr.len - 1; i++ )
+            begin
+              tr.valid[i]   = $urandom_range( 1, 0 );
+              tr.empty[i]   = $urandom_range( 2**EMPTY_WIDTH - 1, 0 );
+              tr.channel[i] = $urandom_range( 2**CHANNEL_WIDTH - 1, 0 );
+              tr.dir[i]     = $urandom_range( TX_DIR - 1, 0 );
+            end
+
+          tr.ready_type = ALTERNATING;
+          generated_transactions.put(tr);
+        end
+
     endtask 
     
   endclass
