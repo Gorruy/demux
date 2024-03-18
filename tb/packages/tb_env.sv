@@ -84,12 +84,14 @@ package tb_env;
 
       repeat ( tr.len )
         begin
+           
           tr.valid.push_back( 1'b1 );
           tr.startofpacket.push_back( 1'b1 );
           tr.endofpacket.push_back( 1'b1 );
           tr.dir.push_back( $urandom_range( TX_DIR - 1, 0 ) );
         end
-        generated_transactions.put(tr);
+
+      generated_transactions.put(tr);
 
       // Transaction without valid
       tr = new();
@@ -280,7 +282,9 @@ package tb_env;
       while ( wr_timeout < TIMEOUT )
         begin
           @( posedge vif.clk );
-          if ( vif.ast_valid === 1'b1 )
+          if ( vif.ast_valid === 1'b1 && vif.ast_endofpacket === 1'b1 )
+            break;
+          else if ( vif.ast_valid === 1'b1 )
             wr_timeout = 0;
           else
             wr_timeout += 1;
@@ -310,6 +314,8 @@ package tb_env;
           endcase
 
         end
+
+      vif.ast_ready <= 1'b0;
 
     endtask
 
@@ -396,7 +402,6 @@ package tb_env;
                     end
 
                   this.read_tr.put(tr);
-                  return;
                 end
               else
                 begin
@@ -410,7 +415,6 @@ package tb_env;
             end
         end
 
-      this.read_tr.put(tr);
 
     endtask
   
@@ -432,39 +436,71 @@ package tb_env;
 
     task run;
 
-      ReadTransactionInfo out_tr [TX_DIR - 1:0];
+      ReadTransactionInfo out_tr;
       ReadTransactionInfo in_tr;
 
       while ( input_trs.num() )
         begin
           input_trs.get(in_tr);
-          foreach (out_tr[i])
-            output_trs[i].get(out_tr[i]);
-
-          if ( in_tr.dir.size() == 0 )
-            foreach(out_tr[i])
-              if ( out_tr[i].data.size() != 0 )
+          
+          if ( in_tr.dir.size() == 0 ) // Check if there is no input valid transaction but output presents
+            foreach ( output_trs[i] )
+              if ( output_trs[i].num() != 0 )
                 begin
-                  $error( "Protocol violation, valid data appears at output ports without valid transaction at input");
-                  $displayh( "port:%d, data:%p", i, out_tr[i].data );
+                  $error("Unexpected data at%d port",i );
+                  break;
                 end
 
-          foreach ( out_tr[i] )
+          foreach (in_tr.dir[i])
             begin
-              if ( out_tr[i].data.size() != 0 && in_tr.dir[0] != i )
+              if ( output_trs[in_tr.dir[i]].try_get(out_tr) == 0 )
                 begin
-                  $error( "Valid data appears at wrong port");
-                  $displayh( "port:%d, data:%p", i, out_tr[i].data );
+                  $error("Writtend data is not at right output port!");
+                  break;
+                end
+              else
+                begin
+                  if ( in_tr.channel.pop_back() !== out_tr.channel.pop_back() )
+                    $error("wrong channel info!");
+                  while ( out_tr.data.size() != 0 )
+                    if ( out_tr.data.pop_back() !== in_tr.data.pop_back() )
+                      begin
+                        $error("Wrong data at port");
+                        $displayh("port:%d", in_tr.dir[0] );
+                        break;
+                      end
                 end
             end
 
-          if ( in_tr.data != out_tr[in_tr.dir[0]].data )
-            begin
-              $error( "Wrong data!!" );
-              $displayh("wr:%p", in_tr.data );
-              $displayh("rd:%p", out_tr[in_tr.dir[0]].data );
-              $displayh("port:%d", in_tr.dir[0] );
-            end
+          // Clean up output mailboxes
+          foreach ( output_trs[i] )
+            while ( output_trs[i].num() )
+              output_trs[i].get(out_tr);
+
+          // if ( in_tr.dir.size() == 0 )
+          //   foreach(out_tr[i])
+          //     if ( out_tr[i].data.size() != 0 )
+          //       begin
+          //         $error( "Protocol violation, valid data appears at output ports without valid transaction at input");
+          //         $displayh( "port:%d, data:%p", i, out_tr[i].data );
+          //       end
+
+          // foreach ( out_tr[i] )
+          //   begin
+          //     if ( out_tr[i].data.size() != 0 && in_tr.dir[0] != i )
+          //       begin
+          //         $error( "Valid data appears at wrong port");
+          //         $displayh( "port:%d, data:%p", i, out_tr[i].data );
+          //       end
+          //   end
+
+          // if ( in_tr.data != out_tr[in_tr.dir[0]].data )
+          //   begin
+          //     $error( "Wrong data!!" );
+          //     $displayh("wr:%p", in_tr.data );
+          //     $displayh("rd:%p", out_tr[in_tr.dir[0]].data );
+          //     $displayh("port:%d", in_tr.dir[0] );
+          //   end
         end
 
     endtask
@@ -505,10 +541,10 @@ package tb_env;
           out_monitors[i] = new( o_vifs[i], output_trs[i] );
         end
 
-      in_driver              = new( i_vif );
-      scoreboard             = new( input_trs, output_trs );
-      generator              = new( generated_transactions );
-      in_monitor             = new( i_vif, input_trs );
+      in_driver  = new( i_vif );
+      scoreboard = new( input_trs, output_trs );
+      generator  = new( generated_transactions );
+      in_monitor = new( i_vif, input_trs );
       
     endfunction
     
