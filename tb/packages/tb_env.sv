@@ -216,7 +216,7 @@ package tb_env;
           tr = new( .tr_length(WORK_TR_LEN + 1), .rd_t(CONST_ZERO) );
           tr.wait_dut_ready = 1'b0;
 
-          for ( int i = 0; i < tr.len - 1; i++ )
+          for ( int i = 1; i < tr.len - 1; i++ )
             begin
               tr.valid[i]   = $urandom_range( 1, 0 );
               tr.empty[i]   = $urandom_range( 2**EMPTY_WIDTH - 1, 0 );
@@ -383,7 +383,7 @@ package tb_env;
           if ( this.vif.srst === 1'b1 )
             break;
 
-          if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 && this.vif.ast_ready === 1'b1 )
+          if ( this.vif.ast_startofpacket === 1'b1 && this.vif.ast_valid === 1'b1 )
             begin
               tr = new();
 
@@ -443,26 +443,25 @@ package tb_env;
       ReadTransactionInfo out_tr;
       ReadTransactionInfo in_tr;
 
-      while ( input_trs.num() )
+      while ( input_trs.num() ) // Check if there is no input valid transaction but output presents
         begin
           input_trs.get(in_tr);
-          
-          if ( in_tr.dir.size() == 0 ) // Check if there is no input valid transaction but output presents
+
+          if ( in_tr.dir.size() == 0 )
             begin
-              foreach ( output_trs[i] )
-                if ( output_trs[i].num() != 0 )
-                  begin
-                    output_trs[i].get(out_tr);
-                    if ( out_tr.data.size() != 0 )
-                      begin
-                        $error("Unexpected data at%d port", i );
-                      end
-                    break;
-                  end
+              foreach(output_trs[i])
+                begin
+                  while ( output_trs[i].try_get(out_tr) != 0 )
+                    begin
+                      if ( out_tr.data.size() != 0 )
+                        $error("Valid data at output ports without valid startofpacket");
+                    end
+                end
               continue;
             end
+          
 
-          foreach (in_tr.dir[i]) // In loop for cases when multiple startofpacket in one transaction
+          foreach (in_tr.dir[i]) // In loop for cases when multiple valid startofpacket
             begin
               if ( output_trs[in_tr.dir[i]].try_get(out_tr) == 0 )
                 begin
