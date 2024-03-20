@@ -150,15 +150,6 @@ package tb_env;
 
         end
 
-      // Transactions of work length without ready
-      repeat (NUMBER_OF_TEST_RUNS)
-        begin
-          tr = new( .rd_t(CONST_ZERO) );
-          tr.wait_dut_ready = 1'b0;
-
-          generated_transactions.put(tr);
-        end
-
       // transaction without startofpacket
       tr = new( .rd_t(RANDOM));
 
@@ -168,15 +159,6 @@ package tb_env;
         end
 
       generated_transactions.put(tr);
-
-      // Transactions with length progression
-      for ( int i = 2; i < WORK_TR_LEN; i++ )
-        begin
-          tr = new(.tr_length(i));
-
-          generated_transactions.put(tr);
-
-        end
 
       // Normal transaction of max length with alternating ready
       tr = new(.tr_length(MAX_TR_LEN), .rd_t(ALTERNATING) );
@@ -189,6 +171,24 @@ package tb_env;
       tr.reset[tr.len/2] = 1'b1;
 
       generated_transactions.put(tr);
+
+      // Transactions of work length without ready
+      repeat (NUMBER_OF_TEST_RUNS)
+        begin
+          tr = new( .rd_t(CONST_ZERO) );
+          tr.wait_dut_ready = 1'b0;
+
+          generated_transactions.put(tr);
+        end
+
+      // Transactions with length progression
+      for ( int i = 2; i < WORK_TR_LEN; i++ )
+        begin
+          tr = new(.tr_length(i));
+
+          generated_transactions.put(tr);
+
+        end
 
       // Transaction with const reset
       tr = new();
@@ -488,7 +488,12 @@ package tb_env;
               else
                 begin
                   if ( in_tr.channel.pop_back() !== out_tr.channel.pop_back() )
-                    $error("wrong channel info!");
+                    $error("Wrong channel info!");
+                  if ( out_tr.data.size() != in_tr.data.size() )
+                    begin
+                      $error("Input and output data sizes not equal!");
+                      break;
+                    end
                   while ( out_tr.data.size() != 0 )
                     if ( out_tr.data.pop_back() !== in_tr.data.pop_back() )
                       begin
